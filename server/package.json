@@ -9,9 +9,10 @@
     "db:migrate": "npx drizzle-kit migrate",
     "db:generate": "npx drizzle-kit generate",
     "db:studio": "npx drizzle-kit studio",
-    "docker:build": "docker build -t sdms-automator-server .",
+    "docker:build": "cd .. && docker build -f server/Dockerfile -t sdms-automator-server .",
     "docker:run": "docker run --env-file .env -p 3000:3000 --init --ipc=host --shm-size=1g sdms-automator-server",
-    "docker:dev": "docker run --env-file .env -p 3001:3001 --init --ipc=host --shm-size=1g -v $(pwd):/app/src -w /app/src -e PORT=3001 -e NODE_ENV=development sdms-automator-server xvfb-run --auto-servernum -- npx tsx watch index.ts"
+    "docker:dev": "docker run --rm --env-file .env -p 3001:3001 --init --ipc=host --shm-size=1g -v $(pwd):/app -v sdms-node-modules:/app/node_modules -e PORT=3001 -e NODE_ENV=development sdms-automator-server sh -c 'Xvfb :99 -screen 0 1920x1080x24 -nolisten tcp & sleep 2 && export DISPLAY=:99 && npx tsx watch index.ts'",
+    "docker:dev:rebuild": "docker volume rm sdms-node-modules 2>/dev/null; npm run docker:build && npm run docker:dev"
   },
   "dependencies": {
     "cors": "^2.8.6",

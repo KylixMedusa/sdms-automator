@@ -15,6 +15,7 @@ export const jobs = pgTable('jobs', {
   maxRetries: integer('max_retries').notNull().default(2),
   resultMessage: text('result_message'),
   errorMessage: text('error_message'),
+  errorScreenshot: text('error_screenshot'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   startedAt: timestamp('started_at', { withTimezone: true }),
   completedAt: timestamp('completed_at', { withTimezone: true }),

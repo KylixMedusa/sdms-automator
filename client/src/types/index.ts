@@ -13,6 +13,7 @@ export interface Job {
   maxRetries: number;
   resultMessage: string | null;
   errorMessage: string | null;
+  hasScreenshot: boolean;
   createdAt: string;
   startedAt: string | null;
   completedAt: string | null;

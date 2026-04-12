@@ -142,8 +142,24 @@ router.get('/api/jobs', requireAuth, async (req, res) => {
     const where = conditions.length > 0 ? and(...conditions) : undefined;
 
     // Fetch limit + 1 to determine if there's a next page
+    // Exclude errorScreenshot from list queries (it's large base64)
     const rows = await db
-      .select()
+      .select({
+        id: jobs.id,
+        jobType: jobs.jobType,
+        orderNumber: jobs.orderNumber,
+        identifierType: jobs.identifierType,
+        details: jobs.details,
+        status: jobs.status,
+        attempts: jobs.attempts,
+        maxRetries: jobs.maxRetries,
+        resultMessage: jobs.resultMessage,
+        errorMessage: jobs.errorMessage,
+        errorScreenshot: jobs.errorScreenshot,
+        createdAt: jobs.createdAt,
+        startedAt: jobs.startedAt,
+        completedAt: jobs.completedAt,
+      })
       .from(jobs)
       .where(where)
       .orderBy(desc(jobs.id))
@@ -151,9 +167,15 @@ router.get('/api/jobs', requireAuth, async (req, res) => {
 
     const hasMore = rows.length > limit;
     const items = hasMore ? rows.slice(0, limit) : rows;
+
+    // Strip base64 data from list — send boolean flag instead
+    const itemsWithFlag = items.map(({ errorScreenshot, ...rest }) => ({
+      ...rest,
+      hasScreenshot: !!errorScreenshot,
+    }));
     const nextCursor = hasMore ? items[items.length - 1].id : null;
 
-    const response: Record<string, unknown> = { jobs: items, nextCursor, hasMore };
+    const response: Record<string, unknown> = { jobs: itemsWithFlag, nextCursor, hasMore };
 
     // Include stats on the first page of date-filtered requests (no cursor, no search)
     if (!cursor && !search) {
@@ -247,6 +269,36 @@ router.get('/api/jobs/:id', requireAuth, async (req, res) => {
     res.json({ job });
   } catch (err) {
     logger.error('Failed to fetch job', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Get error screenshot for a job (raw image)
+router.get('/api/jobs/:id/screenshot', requireAuth, async (req, res) => {
+  try {
+    const idParam = req.params.id;
+    const id = parseInt(Array.isArray(idParam) ? idParam[0] : idParam, 10);
+    if (isNaN(id)) { res.status(400).json({ error: 'Invalid job ID' }); return; }
+
+    const [job] = await db
+      .select({ errorScreenshot: jobs.errorScreenshot })
+      .from(jobs)
+      .where(eq(jobs.id, id))
+      .limit(1);
+
+    if (!job?.errorScreenshot) {
+      res.status(404).json({ error: 'No screenshot available' });
+      return;
+    }
+
+    // errorScreenshot is "data:image/png;base64,..." — extract the base64 part
+    const base64 = job.errorScreenshot.replace(/^data:image\/png;base64,/, '');
+    const buffer = Buffer.from(base64, 'base64');
+    res.setHeader('Content-Type', 'image/png');
+    res.setHeader('Content-Length', buffer.length);
+    res.send(buffer);
+  } catch (err) {
+    logger.error('Failed to fetch screenshot', err);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

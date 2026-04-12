@@ -1,3 +1,4 @@
+import { readdirSync, statSync, unlinkSync, existsSync } from 'fs';
 import { db } from '../db';
 import { jobs } from '../db/schema';
 import type { Job } from '../db/schema';
@@ -6,6 +7,8 @@ import { runAutomation } from '../automation';
 import logger from '../utils/logger';
 
 const POLL_INTERVAL = parseInt(process.env.POLL_INTERVAL_MS || '3000', 10);
+const TRACES_DIR = '/data/traces';
+const TRACE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
 let shuttingDown = false;
 let currentJobPromise: Promise<void> | null = null;
@@ -52,21 +55,20 @@ async function markCompleted(id: number, resultMessage: string): Promise<void> {
     .where(eq(jobs.id, id));
 }
 
-async function markFailed(id: number, errorMessage: string): Promise<void> {
+async function markFailed(id: number, errorMessage: string, errorScreenshot?: string): Promise<void> {
   await db
     .update(jobs)
     .set({
       status: 'failed',
       errorMessage,
+      errorScreenshot: errorScreenshot || null,
       completedAt: new Date(),
     })
     .where(eq(jobs.id, id));
 }
 
-async function handleFailure(job: Job, errorMessage: string): Promise<void> {
-  // job.attempts was already incremented in markRunning
-  // maxRetries default is 2, so after 2 attempts we fail
-  const currentAttempts = job.attempts + 1; // +1 because markRunning incremented it
+async function handleFailure(job: Job, errorMessage: string, screenshot?: string): Promise<void> {
+  const currentAttempts = job.attempts + 1;
   if (currentAttempts < job.maxRetries) {
     logger.info(`Job #${job.id} failed attempt ${currentAttempts}/${job.maxRetries}, will retry`);
     await db
@@ -75,7 +77,7 @@ async function handleFailure(job: Job, errorMessage: string): Promise<void> {
       .where(eq(jobs.id, job.id));
   } else {
     logger.warn(`Job #${job.id} failed after ${currentAttempts} attempts: ${errorMessage}`);
-    await markFailed(job.id, errorMessage);
+    await markFailed(job.id, errorMessage, screenshot);
   }
 }
 
@@ -90,7 +92,7 @@ async function processJob(job: Job): Promise<void> {
       await markCompleted(job.id, result.message);
       logger.info(`Job #${job.id} completed: ${result.message}`);
     } else {
-      await handleFailure(job, result.message);
+      await handleFailure(job, result.message, result.screenshot);
     }
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : String(err);
@@ -109,6 +111,9 @@ export async function startJobProcessor(): Promise<void> {
   if (resetResult.length > 0) {
     logger.info(`Reset ${resetResult.length} stuck running job(s) to pending`);
   }
+
+  // Clean up old trace files on startup
+  cleanupOldTraces();
 
   logger.info('Job processor started — polling for pending jobs');
 
@@ -133,6 +138,28 @@ export async function startJobProcessor(): Promise<void> {
   }
 
   logger.info('Job processor stopped');
+}
+
+function cleanupOldTraces(): void {
+  try {
+    if (!existsSync(TRACES_DIR)) return;
+    const now = Date.now();
+    const files = readdirSync(TRACES_DIR);
+    let cleaned = 0;
+    for (const file of files) {
+      const filePath = `${TRACES_DIR}/${file}`;
+      const stat = statSync(filePath);
+      if (now - stat.mtimeMs > TRACE_MAX_AGE_MS) {
+        unlinkSync(filePath);
+        cleaned++;
+      }
+    }
+    if (cleaned > 0) {
+      logger.info(`Cleaned up ${cleaned} old trace file(s)`);
+    }
+  } catch {
+    logger.warn('Failed to clean up traces');
+  }
 }
 
 export async function gracefulShutdown(): Promise<void> {

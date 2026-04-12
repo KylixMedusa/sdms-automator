@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Chip } from '@heroui/react';
 import type { Job } from '../types';
 
@@ -76,75 +77,121 @@ function StatusIcon({ status }: { status: Job['status'] }) {
 export default function OrderCard({ job, showDate }: OrderCardProps) {
   const config = getStatusConfig(job.status);
   const identifierLabel = job.identifierType === 'phone' ? 'Phone' : 'Consumer';
+  const [screenshotOpen, setScreenshotOpen] = useState(false);
+  const [screenshotUrl, setScreenshotUrl] = useState<string | null>(null);
 
   return (
     <div
-      className="px-4 py-4 flex items-center gap-4 transition-transform active:scale-[0.99]"
+      className="transition-transform active:scale-[0.99]"
       style={{
         backgroundColor: '#ffffff',
         borderRadius: '1.25rem',
         boxShadow: '0 1px 4px rgba(86, 67, 56, 0.04)',
       }}
     >
-      {/* Status icon */}
-      <StatusIcon status={job.status} />
+      <div className="px-4 py-4 flex items-center gap-4">
+        <StatusIcon status={job.status} />
 
-      {/* Main content */}
-      <div className="min-w-0 flex-1">
-        {/* Top line: identifier type label + time */}
-        <div className="flex items-center gap-2 mb-0.5">
-          {job.identifierType && (
-            <span
-              className="text-[10px] font-semibold uppercase tracking-wider"
-              style={{ color: '#8a7266' }}
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2 mb-0.5">
+            {job.identifierType && (
+              <span
+                className="text-[10px] font-semibold uppercase tracking-wider"
+                style={{ color: '#8a7266' }}
+              >
+                {identifierLabel}
+              </span>
+            )}
+          </div>
+
+          <div
+            className="text-[15px] font-bold leading-snug"
+            style={{
+              color: '#1b1c1a',
+              fontFamily: 'Plus Jakarta Sans, sans-serif',
+            }}
+          >
+            {job.orderNumber}
+          </div>
+
+          <div
+            className="text-xs mt-0.5 flex items-center gap-1.5"
+            style={{ color: '#8a7266' }}
+          >
+            <span>{showDate ? formatDate(job.createdAt) : timeAgo(job.createdAt)}</span>
+            {job.status === 'failed' && job.errorMessage && (
+              <>
+                <span style={{ color: '#ddc1b3' }}>·</span>
+                <span className="truncate" style={{ color: '#ba1a1a' }}>{job.errorMessage}</span>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Status chip */}
+        <div className="flex items-center gap-2 flex-shrink-0">
+          {/* Screenshot indicator for failed jobs */}
+          {job.status === 'failed' && job.hasScreenshot && (
+            <button
+              onClick={() => {
+                if (!screenshotOpen && !screenshotUrl) {
+                  const base = import.meta.env.VITE_API_URL
+                    ? `${import.meta.env.VITE_API_URL}/api`
+                    : '/api';
+                  setScreenshotUrl(`${base}/jobs/${job.id}/screenshot`);
+                }
+                setScreenshotOpen(!screenshotOpen);
+              }}
+              className="w-8 h-8 flex items-center justify-center"
+              style={{
+                backgroundColor: '#fde8e8',
+                borderRadius: '0.5rem',
+                border: 'none',
+                cursor: 'pointer',
+                color: '#c62828',
+              }}
+              aria-label="View error screenshot"
             >
-              {identifierLabel}
-            </span>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                <circle cx="8.5" cy="8.5" r="1.5" />
+                <path d="M21 15l-5-5L5 21" />
+              </svg>
+            </button>
           )}
-        </div>
-
-        {/* Order number */}
-        <div
-          className="text-[15px] font-bold leading-snug"
-          style={{
-            color: '#1b1c1a',
-            fontFamily: 'Plus Jakarta Sans, sans-serif',
-          }}
-        >
-          {job.orderNumber}
-        </div>
-
-        {/* Subtitle line */}
-        <div
-          className="text-xs mt-0.5 flex items-center gap-1.5"
-          style={{ color: '#8a7266' }}
-        >
-          <span>{showDate ? formatDate(job.createdAt) : timeAgo(job.createdAt)}</span>
-          {job.status === 'failed' && job.errorMessage && (
-            <>
-              <span style={{ color: '#ddc1b3' }}>·</span>
-              <span className="truncate" style={{ color: '#ba1a1a' }}>{job.errorMessage}</span>
-            </>
-          )}
+          <Chip
+            color={config.color}
+            size="sm"
+            variant="soft"
+          >
+            {config.label}
+            {job.status === 'running' && (
+              <span className="inline-flex ml-0.5">
+                <span className="animate-bounce" style={{ animationDelay: '0ms' }}>.</span>
+                <span className="animate-bounce" style={{ animationDelay: '150ms' }}>.</span>
+                <span className="animate-bounce" style={{ animationDelay: '300ms' }}>.</span>
+              </span>
+            )}
+          </Chip>
         </div>
       </div>
 
-      {/* Status chip */}
-      <Chip
-        color={config.color}
-        size="sm"
-        variant="soft"
-        className="flex-shrink-0"
-      >
-        {config.label}
-        {job.status === 'running' && (
-          <span className="inline-flex ml-0.5">
-            <span className="animate-bounce" style={{ animationDelay: '0ms' }}>.</span>
-            <span className="animate-bounce" style={{ animationDelay: '150ms' }}>.</span>
-            <span className="animate-bounce" style={{ animationDelay: '300ms' }}>.</span>
-          </span>
-        )}
-      </Chip>
+      {/* Expandable error screenshot */}
+      {screenshotOpen && screenshotUrl && (
+        <div className="px-4 pb-4">
+          <img
+            src={screenshotUrl}
+            alt="Error screenshot"
+            className="w-full rounded-lg"
+            style={{
+              border: '1px solid #fde8e8',
+              maxHeight: '400px',
+              objectFit: 'contain',
+              backgroundColor: '#fafafa',
+            }}
+          />
+        </div>
+      )}
     </div>
   );
 }
