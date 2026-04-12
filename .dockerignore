@@ -1,0 +1,9 @@
+client/node_modules
+client/dist
+node_modules
+.env
+*.log
+.git
+drizzle
+server/node_modules
+server/.env
