@@ -12,21 +12,20 @@ RUN apt-get update \
 
 # Copy package files and install deps
 # tsx and drizzle-kit are in production deps since they're needed at runtime
-# Browsers are already in the base image — skip re-download
-COPY package.json package-lock.json ./
+COPY server/package.json server/package-lock.json ./
 
 ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 RUN npm ci
 
 # Copy server source + configs
-COPY index.ts ./
-COPY db/ ./db/
-COPY routes/ ./routes/
-COPY middleware/ ./middleware/
-COPY processor/ ./processor/
-COPY automation/ ./automation/
-COPY utils/ ./utils/
-COPY drizzle.config.ts tsconfig.json ./
+COPY server/index.ts ./
+COPY server/db/ ./db/
+COPY server/routes/ ./routes/
+COPY server/middleware/ ./middleware/
+COPY server/processor/ ./processor/
+COPY server/automation/ ./automation/
+COPY server/utils/ ./utils/
+COPY server/drizzle.config.ts server/tsconfig.json ./
 
 ENV NODE_ENV=production
 ENV PORT=3000
