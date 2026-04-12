@@ -47,9 +47,10 @@ export async function runCashMemoAutomation(params: {
       };
     }
 
-    // Step 1: Navigate to a real page to exercise Playwright
-    await page.goto('https://sdms.px.indianoil.in/');
-    logger.info(`[${params.orderNumber}] Navigated to test page`);
+    // Navigate to SDMS portal — use longer timeout and waitUntil: 'domcontentloaded'
+    // since WAF (Imperva) can delay full page load from cloud IPs
+    await page.goto(toolUrl, { timeout: 90000, waitUntil: 'domcontentloaded' });
+    logger.info(`[${params.orderNumber}] Navigated to portal`);
 
     await page.waitForSelector('input[id="username"]', { state: 'visible' });
     await page.fill('input[id="username"]', toolUsername);
