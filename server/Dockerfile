@@ -35,4 +35,4 @@ EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD wget --no-verbose --tries=1 --spider http://localhost:3000/health || exit 1
 
-CMD ["sh", "-c", "Xvfb :99 -screen 0 1280x720x24 -nolisten tcp &>/dev/null & export DISPLAY=:99 && node node_modules/.bin/tsx index.ts"]
+CMD ["sh", "-c", "Xvfb :99 -screen 0 1920x1080x24 -nolisten tcp &>/dev/null & export DISPLAY=:99 && node node_modules/.bin/tsx index.ts"]

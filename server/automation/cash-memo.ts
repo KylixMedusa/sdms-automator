@@ -1,8 +1,12 @@
-import { chromium } from 'playwright';
+import { chromium } from 'playwright-extra';
+import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 import { existsSync } from 'fs';
 
 import logger from '../utils/logger';
 import { getSetting } from '../utils/settings';
+
+// Stealth plugin: patches navigator.webdriver, user-agent, chrome.runtime, etc.
+chromium.use(StealthPlugin());
 
 // Use system Chrome if installed (x86 production), fall back to bundled Chromium (ARM64/local dev)
 const useSystemChrome = existsSync('/opt/google/chrome/chrome');
@@ -16,14 +20,23 @@ export async function runCashMemoAutomation(params: {
   orderNumber: string;
   identifierType: 'consumer' | 'phone' | null;
 }): Promise<AutomationResult> {
-  // WAF bypass: Imperva (Attack ID 20000051) blocks headless Chrome at the TLS level.
-  // Headed Chrome passes. xvfb provides a virtual framebuffer in production.
+  // WAF bypass: Imperva blocks headless Chrome at the TLS level.
+  // Headed Chrome + stealth plugin + xvfb (in production) passes detection.
   const browser = await chromium.launch({
     headless: false,
     ...(useSystemChrome ? { channel: 'chrome' } : {}),
-    args: ['--disable-blink-features=AutomationControlled', '--no-sandbox'],
+    args: [
+      '--disable-blink-features=AutomationControlled',
+      '--no-sandbox',
+      '--disable-dev-shm-usage',
+      '--disable-infobars',
+      '--window-size=1920,1080',
+    ],
   });
-  const context = await browser.newContext();
+  const context = await browser.newContext({
+    viewport: { width: 1920, height: 1080 },
+    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+  });
   const page = await context.newPage();
 
   try {
