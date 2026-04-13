@@ -1,3 +1,6 @@
+import dns from 'dns';
+dns.setDefaultResultOrder('ipv4first');
+
 import 'dotenv/config';
 import { startJobProcessor, gracefulShutdown } from './processor';
 import { pool } from '../shared/db';
