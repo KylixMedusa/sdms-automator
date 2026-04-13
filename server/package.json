@@ -13,13 +13,13 @@
     "docker:run": "docker run --env-file .env -p 3000:3000 --init sdms-automator-server"
   },
   "dependencies": {
+    "@neondatabase/serverless": "^1.0.2",
     "cors": "^2.8.6",
     "dotenv": "^17.4.1",
     "drizzle-kit": "^0.31.10",
     "drizzle-orm": "^0.45.2",
     "express": "^5.2.1",
     "jsonwebtoken": "^9.0.3",
-    "pg": "^8.20.0",
     "tsx": "^4.21.0",
     "winston": "^3.19.0",
     "zod": "^4.3.6"
