@@ -17,7 +17,7 @@ function sleep(ms: number): Promise<void> {
 // #6 fix: Atomic claim — SELECT FOR UPDATE SKIP LOCKED + UPDATE in one shot
 // Prevents race conditions if multiple workers ever run simultaneously
 async function claimNextJob(): Promise<Job | null> {
-  const result = await db.execute<Job>(sql`
+  const result = await db.execute(sql`
     UPDATE jobs SET
       status = 'running',
       started_at = now(),
@@ -32,7 +32,26 @@ async function claimNextJob(): Promise<Job | null> {
     RETURNING *
   `);
 
-  return result.rows?.[0] || null;
+  const row = result.rows?.[0] as Record<string, unknown> | undefined;
+  if (!row) return null;
+
+  // Map snake_case DB columns to camelCase Job type
+  return {
+    id: row.id as number,
+    jobType: row.job_type as Job['jobType'],
+    orderNumber: row.order_number as string,
+    identifierType: row.identifier_type as Job['identifierType'],
+    details: row.details as string | null,
+    status: row.status as Job['status'],
+    attempts: row.attempts as number,
+    maxRetries: row.max_retries as number,
+    resultMessage: row.result_message as string | null,
+    errorMessage: row.error_message as string | null,
+    errorScreenshot: row.error_screenshot as string | null,
+    createdAt: row.created_at as Date,
+    startedAt: row.started_at as Date | null,
+    completedAt: row.completed_at as Date | null,
+  };
 }
 
 async function markCompleted(id: number, resultMessage: string): Promise<void> {
