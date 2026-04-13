@@ -1,6 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { isAuthenticated } from '../api/client';
+import { useState, useMemo } from 'react';
 import type { Stats, JobType, JobStatus } from '../types';
 import { useInfiniteJobs } from '../hooks/useInfiniteJobs';
 import AppNav from '../components/AppNav';
@@ -32,7 +30,6 @@ function isToday(date: Date): boolean {
 const emptyStats: Stats = { total: 0, completed: 0, failed: 0, pending: 0, running: 0 };
 
 export default function Dashboard() {
-  const navigate = useNavigate();
   const isDesktop = useMediaQuery('(min-width: 640px)');
   const [activeTab, setActiveTab] = useState<JobType>('cash_memo');
   const [selectedDate, setSelectedDate] = useState(new Date());
@@ -40,14 +37,6 @@ export default function Dashboard() {
   const [modalOpen, setModalOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-
-  const authenticated = isAuthenticated();
-
-  useEffect(() => {
-    if (!authenticated) {
-      navigate('/', { replace: true });
-    }
-  }, [authenticated, navigate]);
 
   const statusParam: JobStatus | undefined = useMemo(() => {
     if (statusFilter === 'completed') return 'completed';
@@ -65,7 +54,7 @@ export default function Dashboard() {
   // Single hook: jobs + stats in one request, smart polling
   const { jobs, stats, loading, loadingMore, sentinelRef, refresh } = useInfiniteJobs(
     jobsQuery,
-    authenticated && activeTab === 'cash_memo',
+    activeTab === 'cash_memo',
   );
 
   const handlePrevDay = () => {

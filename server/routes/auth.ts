@@ -6,8 +6,15 @@ import { requireAuth } from '../middleware/auth';
 
 const router = Router();
 
-const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret';
-const APP_PIN = process.env.APP_PIN || '1234';
+// #2 fix: Fail-fast if secrets are not set
+if (!process.env.JWT_SECRET) {
+  throw new Error('JWT_SECRET environment variable is required');
+}
+if (!process.env.APP_PIN) {
+  throw new Error('APP_PIN environment variable is required');
+}
+const JWT_SECRET = process.env.JWT_SECRET;
+const APP_PIN = process.env.APP_PIN;
 
 const pinSchema = z.object({
   pin: z.string().length(4),

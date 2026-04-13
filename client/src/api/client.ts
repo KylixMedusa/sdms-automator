@@ -109,6 +109,20 @@ export async function updateCashMemoSettings(settings: Partial<CashMemoSettings>
   });
 }
 
+// #15 fix: Centralized screenshot fetch with auth
+export async function getScreenshotBlob(jobId: number): Promise<Blob | null> {
+  const token = getToken();
+  try {
+    const res = await fetch(`${API_BASE}/jobs/${jobId}/screenshot`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!res.ok) return null;
+    return await res.blob();
+  } catch {
+    return null;
+  }
+}
+
 export function isAuthenticated(): boolean {
   return !!getToken();
 }

@@ -1,4 +1,4 @@
-import { pgTable, integer, text, timestamp, pgEnum } from 'drizzle-orm/pg-core';
+import { pgTable, integer, text, timestamp, pgEnum, index } from 'drizzle-orm/pg-core';
 
 export const jobStatusEnum = pgEnum('job_status', ['pending', 'running', 'completed', 'failed']);
 export const jobTypeEnum = pgEnum('job_type', ['cash_memo', 'dac']);
@@ -19,7 +19,11 @@ export const jobs = pgTable('jobs', {
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   startedAt: timestamp('started_at', { withTimezone: true }),
   completedAt: timestamp('completed_at', { withTimezone: true }),
-});
+}, (t) => [
+  index('idx_jobs_status_created').on(t.status, t.createdAt),
+  index('idx_jobs_type_created').on(t.jobType, t.createdAt),
+  index('idx_jobs_order_number').on(t.orderNumber),
+]);
 
 export const settings = pgTable('settings', {
   id: integer('id').primaryKey().generatedAlwaysAsIdentity(),

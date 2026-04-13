@@ -1,8 +1,7 @@
 import { chromium } from 'playwright-extra';
 import type { Page, BrowserContext } from 'playwright';
 import StealthPlugin from 'puppeteer-extra-plugin-stealth';
-import { existsSync, mkdirSync } from 'fs';
-
+import { existsSync } from 'fs';
 import logger from '../../shared/utils/logger';
 import { getSetting } from '../../shared/utils/settings';
 
@@ -11,9 +10,6 @@ chromium.use(StealthPlugin());
 
 // Use system Chrome if installed (x86 production), fall back to bundled Chromium (ARM64/local dev)
 const useSystemChrome = existsSync('/opt/google/chrome/chrome');
-
-// Traces directory
-const TRACES_DIR = '/data/traces';
 
 // All element waits use 2 minutes
 const WAIT_TIMEOUT = 120_000;
@@ -98,9 +94,6 @@ export async function runCashMemoAutomation(params: {
     viewport: { width: 1920, height: 1080 },
     userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
   });
-
-  // Start tracing for failure debugging
-  await context.tracing.start({ screenshots: true, snapshots: true });
 
   const page = await context.newPage();
   const tag = `[${params.orderNumber}]`;
@@ -229,7 +222,7 @@ export async function runCashMemoAutomation(params: {
     }
 
     if (!clickedOpenOrder) {
-      return { success: false, message: `No open Sales Order found for ${params.orderNumber}` };
+      return await failWithScreenshot(page, context, tag, `No open Sales Order found for ${params.orderNumber}`);
     }
 
     logger.info(`${tag} Clicked open Sales Order: ${orderNumber}`);
@@ -258,40 +251,35 @@ export async function runCashMemoAutomation(params: {
     await page.locator('button[title="Logout"]').click();
     logger.info(`${tag} Logged out`);
 
-    // Discard trace on success
-    await context.tracing.stop();
-
     return {
       success: true,
       message: `Invoice created for order ${orderNumber}`,
     };
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : String(err);
-    logger.error(`${tag} Automation failed: ${errorMessage}`);
-
-    // Capture screenshot as base64 for DB storage
-    let screenshot: string | undefined;
-    try {
-      const buffer = await page.screenshot({ fullPage: true });
-      screenshot = `data:image/png;base64,${buffer.toString('base64')}`;
-      logger.info(`${tag} Error screenshot captured (${Math.round(buffer.length / 1024)}KB)`);
-    } catch {
-      logger.warn(`${tag} Failed to capture error screenshot`);
-    }
-
-    // Save trace to filesystem for detailed debugging
-    try {
-      if (!existsSync(TRACES_DIR)) mkdirSync(TRACES_DIR, { recursive: true });
-      const tracePath = `${TRACES_DIR}/${params.orderNumber}-${Date.now()}.zip`;
-      await context.tracing.stop({ path: tracePath });
-      logger.info(`${tag} Trace saved: ${tracePath}`);
-    } catch {
-      logger.warn(`${tag} Failed to save trace`);
-    }
-
-    return { success: false, message: errorMessage, screenshot };
+    return await failWithScreenshot(page, context, tag, errorMessage);
   } finally {
     await context.close();
     await browser.close();
   }
+}
+
+async function failWithScreenshot(
+  page: Page,
+  _context: BrowserContext,
+  tag: string,
+  message: string,
+): Promise<AutomationResult> {
+  logger.error(`${tag} Automation failed: ${message}`);
+
+  let screenshot: string | undefined;
+  try {
+    const buffer = await page.screenshot({ fullPage: true });
+    screenshot = `data:image/png;base64,${buffer.toString('base64')}`;
+    logger.info(`${tag} Error screenshot captured (${Math.round(buffer.length / 1024)}KB)`);
+  } catch {
+    logger.warn(`${tag} Failed to capture error screenshot`);
+  }
+
+  return { success: false, message, screenshot };
 }

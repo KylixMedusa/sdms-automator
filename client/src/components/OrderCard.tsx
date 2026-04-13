@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Chip } from '@heroui/react';
 import type { Job } from '../types';
+import { getScreenshotBlob } from '../api/client';
 
 interface OrderCardProps {
   job: Job;
@@ -79,6 +80,14 @@ export default function OrderCard({ job, showDate }: OrderCardProps) {
   const identifierLabel = job.identifierType === 'phone' ? 'Phone' : 'Consumer';
   const [screenshotOpen, setScreenshotOpen] = useState(false);
   const [screenshotUrl, setScreenshotUrl] = useState<string | null>(null);
+  const blobUrlRef = useRef<string | null>(null);
+
+  // #5 fix: Revoke blob URL on unmount to prevent memory leak
+  useEffect(() => {
+    return () => {
+      if (blobUrlRef.current) URL.revokeObjectURL(blobUrlRef.current);
+    };
+  }, []);
 
   return (
     <div
@@ -135,19 +144,13 @@ export default function OrderCard({ job, showDate }: OrderCardProps) {
             <button
               onClick={async () => {
                 if (!screenshotOpen && !screenshotUrl) {
-                  const base = import.meta.env.VITE_API_URL
-                    ? `${import.meta.env.VITE_API_URL}/api`
-                    : '/api';
-                  const token = localStorage.getItem('token');
-                  try {
-                    const res = await fetch(`${base}/jobs/${job.id}/screenshot`, {
-                      headers: token ? { Authorization: `Bearer ${token}` } : {},
-                    });
-                    if (res.ok) {
-                      const blob = await res.blob();
-                      setScreenshotUrl(URL.createObjectURL(blob));
-                    }
-                  } catch { /* ignore */ }
+                  const blob = await getScreenshotBlob(job.id);
+                  if (blob) {
+                    if (blobUrlRef.current) URL.revokeObjectURL(blobUrlRef.current);
+                    const url = URL.createObjectURL(blob);
+                    blobUrlRef.current = url;
+                    setScreenshotUrl(url);
+                  }
                 }
                 setScreenshotOpen(!screenshotOpen);
               }}

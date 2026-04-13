@@ -1,7 +1,7 @@
 [build]
 builder = "dockerfile"
 dockerfilePath = "server/Dockerfile"
-watchPatterns = ["server/**"]
+watchPatterns = ["server/**", "shared/**"]
 
 [deploy]
 healthcheckPath = "/health"
