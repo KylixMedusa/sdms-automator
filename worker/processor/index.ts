@@ -102,15 +102,11 @@ async function processJob(job: Job): Promise<void> {
 
 export async function startJobProcessor(): Promise<void> {
   // Startup recovery: reset any stuck "running" jobs
-  const resetResult = await db
+  await db
     .update(jobs)
     .set({ status: 'pending' })
-    .where(eq(jobs.status, 'running'))
-    .returning({ id: jobs.id });
-
-  if (resetResult.length > 0) {
-    logger.info(`Reset ${resetResult.length} stuck running job(s) to pending`);
-  }
+    .where(eq(jobs.status, 'running'));
+  logger.info('Reset any stuck running jobs to pending');
 
   // Clean up old trace files on startup
   cleanupOldTraces();
