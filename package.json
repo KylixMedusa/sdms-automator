@@ -3,12 +3,12 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
+    "dev": "concurrently \"npm run dev:server\" \"npm run dev:worker\" \"npm run dev:client\"",
     "dev:server": "tsx watch server/index.ts",
+    "dev:worker": "tsx watch worker/index.ts",
     "dev:client": "cd client && npx vite --port 5173",
     "build": "cd client && npx vite build",
     "start": "NODE_ENV=production tsx server/index.ts",
-    "start:xvfb": "NODE_ENV=production xvfb-run --auto-servernum -- tsx server/index.ts",
     "db:push": "npx drizzle-kit push",
     "db:migrate": "npx drizzle-kit migrate",
     "db:generate": "npx drizzle-kit generate",
@@ -28,7 +28,6 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
-    "@playwright/test": "^1.59.1",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
     "@types/jsonwebtoken": "^9.0.10",

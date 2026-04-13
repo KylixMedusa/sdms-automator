@@ -1,7 +1,7 @@
 import type { AutomationResult } from './cash-memo';
 import { runCashMemoAutomation } from './cash-memo';
 import { runDacAutomation } from './dac';
-import type { Job } from '../db/schema';
+import type { Job } from '../../shared/db/schema';
 
 export type { AutomationResult };
 

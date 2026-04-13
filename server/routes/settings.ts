@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { requireAuth } from '../middleware/auth';
-import { getSetting, setSetting } from '../utils/settings';
+import { getSetting, setSetting } from '../../shared/utils/settings';
 
 const router = Router();
 

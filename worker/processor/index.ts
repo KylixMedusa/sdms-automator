@@ -1,10 +1,10 @@
 import { readdirSync, statSync, unlinkSync, existsSync } from 'fs';
-import { db } from '../db';
-import { jobs } from '../db/schema';
-import type { Job } from '../db/schema';
+import { db } from '../../shared/db';
+import { jobs } from '../../shared/db/schema';
+import type { Job } from '../../shared/db/schema';
 import { eq, asc } from 'drizzle-orm';
 import { runAutomation } from '../automation';
-import logger from '../utils/logger';
+import logger from '../../shared/utils/logger';
 
 const POLL_INTERVAL = parseInt(process.env.POLL_INTERVAL_MS || '3000', 10);
 const TRACES_DIR = '/data/traces';

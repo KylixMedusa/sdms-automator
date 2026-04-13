@@ -1,5 +1,5 @@
 import type { AutomationResult } from './cash-memo';
-import logger from '../utils/logger';
+import logger from '../../shared/utils/logger';
 
 export async function runDacAutomation(params: {
   orderNumber: string;

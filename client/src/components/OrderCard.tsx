@@ -133,12 +133,21 @@ export default function OrderCard({ job, showDate }: OrderCardProps) {
           {/* Screenshot indicator for failed jobs */}
           {job.status === 'failed' && job.hasScreenshot && (
             <button
-              onClick={() => {
+              onClick={async () => {
                 if (!screenshotOpen && !screenshotUrl) {
                   const base = import.meta.env.VITE_API_URL
                     ? `${import.meta.env.VITE_API_URL}/api`
                     : '/api';
-                  setScreenshotUrl(`${base}/jobs/${job.id}/screenshot`);
+                  const token = localStorage.getItem('token');
+                  try {
+                    const res = await fetch(`${base}/jobs/${job.id}/screenshot`, {
+                      headers: token ? { Authorization: `Bearer ${token}` } : {},
+                    });
+                    if (res.ok) {
+                      const blob = await res.blob();
+                      setScreenshotUrl(URL.createObjectURL(blob));
+                    }
+                  } catch { /* ignore */ }
                 }
                 setScreenshotOpen(!screenshotOpen);
               }}

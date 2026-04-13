@@ -6,16 +6,14 @@ import { fileURLToPath } from 'url';
 import authRoutes from './routes/auth';
 import jobRoutes from './routes/jobs';
 import settingsRoutes from './routes/settings';
-import { startJobProcessor, gracefulShutdown } from './processor';
-import { pool } from './db';
-import logger from './utils/logger';
+import { pool } from '../shared/db';
+import logger from '../shared/utils/logger';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const app = express();
 const PORT = parseInt(process.env.PORT || '3001', 10);
 
-// CORS — restrict to CORS_ORIGIN in production, allow all in dev
 const corsOrigin = process.env.CORS_ORIGIN;
 app.use(
   cors({
@@ -27,17 +25,14 @@ app.use(
 );
 app.use(express.json());
 
-// Health check — no auth, used by Railway
 app.get('/health', (_req, res) => {
   res.json({ ok: true });
 });
 
-// Routes
 app.use(authRoutes);
 app.use(jobRoutes);
 app.use(settingsRoutes);
 
-// Production: serve client build (only when co-located, not on Railway split deploy)
 if (process.env.NODE_ENV === 'production' && !process.env.CORS_ORIGIN) {
   const clientDist = path.join(__dirname, '..', 'client', 'dist');
   app.use(express.static(clientDist));
@@ -46,21 +41,13 @@ if (process.env.NODE_ENV === 'production' && !process.env.CORS_ORIGIN) {
   });
 }
 
-// Start server
 app.listen(PORT, () => {
   logger.info(`Server running on port ${PORT}`);
   logger.info(`Environment: ${process.env.NODE_ENV || 'development'}`);
-
-  // Start job processor in background (non-blocking)
-  startJobProcessor().catch((err) => {
-    logger.error('Job processor crashed', err);
-  });
 });
 
-// Graceful shutdown
 const shutdown = async () => {
   logger.info('Shutdown signal received');
-  await gracefulShutdown();
   await pool.end();
   logger.info('Database pool closed');
   process.exit(0);

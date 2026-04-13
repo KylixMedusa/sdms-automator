@@ -1,10 +1,10 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { db } from '../db';
-import { jobs } from '../db/schema';
+import { db } from '../../shared/db';
+import { jobs } from '../../shared/db/schema';
 import { eq, and, desc, gte, lt, or, ilike } from 'drizzle-orm';
 import { requireAuth } from '../middleware/auth';
-import logger from '../utils/logger';
+import logger from '../../shared/utils/logger';
 
 const router = Router();
 
@@ -299,6 +299,42 @@ router.get('/api/jobs/:id/screenshot', requireAuth, async (req, res) => {
     res.send(buffer);
   } catch (err) {
     logger.error('Failed to fetch screenshot', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Download trace file for a job
+router.get('/api/jobs/:id/trace', requireAuth, async (req, res) => {
+  try {
+    const idParam = req.params.id;
+    const id = parseInt(Array.isArray(idParam) ? idParam[0] : idParam, 10);
+    if (isNaN(id)) { res.status(400).json({ error: 'Invalid job ID' }); return; }
+
+    const [job] = await db
+      .select({ orderNumber: jobs.orderNumber })
+      .from(jobs)
+      .where(eq(jobs.id, id))
+      .limit(1);
+
+    if (!job) { res.status(404).json({ error: 'Job not found' }); return; }
+
+    // Find trace file matching this job's order number
+    const { readdirSync, createReadStream } = await import('fs');
+    const tracesDir = '/data/traces';
+    const files = readdirSync(tracesDir).filter((f: string) => f.startsWith(job.orderNumber));
+
+    if (files.length === 0) {
+      res.status(404).json({ error: 'No trace available' });
+      return;
+    }
+
+    // Return the most recent trace
+    const latestFile = files.sort().pop()!;
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', `attachment; filename="${latestFile}"`);
+    createReadStream(`${tracesDir}/${latestFile}`).pipe(res);
+  } catch (err) {
+    logger.error('Failed to fetch trace', err);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

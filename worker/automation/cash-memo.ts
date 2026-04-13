@@ -3,8 +3,8 @@ import type { Page, BrowserContext } from 'playwright';
 import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 import { existsSync, mkdirSync } from 'fs';
 
-import logger from '../utils/logger';
-import { getSetting } from '../utils/settings';
+import logger from '../../shared/utils/logger';
+import { getSetting } from '../../shared/utils/settings';
 
 // Stealth plugin: patches navigator.webdriver, user-agent, chrome.runtime, etc.
 chromium.use(StealthPlugin());
