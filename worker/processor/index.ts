@@ -102,11 +102,17 @@ async function processJob(job: Job): Promise<void> {
 
 export async function startJobProcessor(): Promise<void> {
   // Startup recovery: reset any stuck "running" jobs
-  await db
-    .update(jobs)
-    .set({ status: 'pending' })
-    .where(eq(jobs.status, 'running'));
-  logger.info('Reset any stuck running jobs to pending');
+  try {
+    await db
+      .update(jobs)
+      .set({ status: 'pending' })
+      .where(eq(jobs.status, 'running'));
+    logger.info('Reset any stuck running jobs to pending');
+  } catch (err: any) {
+    logger.error(`Startup recovery failed: ${err?.message || err}`);
+    logger.error(`Full error: ${JSON.stringify(err, Object.getOwnPropertyNames(err))}`);
+    throw err;
+  }
 
   // Clean up old trace files on startup
   cleanupOldTraces();
