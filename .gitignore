@@ -12,3 +12,6 @@ drizzle/meta/
 /blob-report/
 /playwright/.cache/
 /playwright/.auth/
+
+# Local service runner (make up/down)
+.dev/
