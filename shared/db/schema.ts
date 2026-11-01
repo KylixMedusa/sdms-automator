@@ -1,7 +1,7 @@
-import { pgTable, integer, text, timestamp, pgEnum, index } from 'drizzle-orm/pg-core';
+import { pgTable, integer, text, timestamp, pgEnum, index, boolean } from 'drizzle-orm/pg-core';
 
 export const jobStatusEnum = pgEnum('job_status', ['pending', 'running', 'completed', 'failed']);
-export const jobTypeEnum = pgEnum('job_type', ['cash_memo', 'dac']);
+export const jobTypeEnum = pgEnum('job_type', ['cash_memo', 'dac', 'return', 'cancel']);
 export const identifierTypeEnum = pgEnum('identifier_type', ['consumer', 'phone']);
 
 export const jobs = pgTable('jobs', {
@@ -16,6 +16,14 @@ export const jobs = pgTable('jobs', {
   resultMessage: text('result_message'),
   errorMessage: text('error_message'),
   errorScreenshot: text('error_screenshot'),
+  // JSON array of { orderNumber, outcome } for jobs that touch many orders
+  // ('return' and 'cancel') — lets per-order history survive past the
+  // in-memory worker logs.
+  processedOrders: text('processed_orders'),
+  // Set by the cancel endpoint for a 'running' job — the worker polls this
+  // between orders/chunks and stops itself; a 'pending' job is cancelled
+  // immediately instead (nothing to interrupt).
+  cancelRequested: boolean('cancel_requested').notNull().default(false),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   startedAt: timestamp('started_at', { withTimezone: true }),
   completedAt: timestamp('completed_at', { withTimezone: true }),

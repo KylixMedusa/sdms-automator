@@ -13,7 +13,7 @@ export default function Login() {
   useEffect(() => {
     checkAuth().then((valid) => {
       if (valid) {
-        navigate('/dashboard', { replace: true });
+        navigate('/return', { replace: true });
       } else {
         setLoading(false);
       }
@@ -31,7 +31,7 @@ export default function Login() {
     setError('');
     try {
       await login(value);
-      navigate('/dashboard', { replace: true });
+      navigate('/return', { replace: true });
     } catch {
       setError('Invalid PIN');
       setShake(true);
@@ -44,13 +44,13 @@ export default function Login() {
     return (
       <div
         className="min-h-screen flex items-center justify-center"
-        style={{ backgroundColor: '#fbf9f5' }}
+        style={{ backgroundColor: 'var(--paper)' }}
       >
         <div
           className="w-10 h-10 rounded-full animate-spin"
           style={{
-            border: '3px solid #e4e2de',
-            borderTopColor: '#974400',
+            border: '3px solid var(--line)',
+            borderTopColor: 'var(--gold)',
           }}
         />
       </div>
@@ -60,32 +60,15 @@ export default function Login() {
   return (
     <div
       className="min-h-screen flex flex-col items-center justify-center px-6"
-      style={{ backgroundColor: '#fbf9f5' }}
+      style={{ backgroundColor: 'var(--paper)' }}
     >
       <div className="flex flex-col items-center w-full max-w-xs">
-        <div
-          className="w-16 h-16 rounded-full flex items-center justify-center mb-6"
-          style={{ backgroundColor: '#974400' }}
-        >
-          <svg width="32" height="32" viewBox="0 0 24 24" fill="white">
-            <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-2 10H7v-2h10v2z" />
-          </svg>
-        </div>
+        <img src="/indianoil-logo.svg" alt="IndianOil" className="h-20 w-auto mb-6" />
 
-        <h1
-          className="text-2xl font-bold mb-1"
-          style={{
-            color: '#1b1c1a',
-            fontFamily: 'Plus Jakarta Sans, sans-serif',
-            letterSpacing: '-0.02em',
-          }}
-        >
+        <h1 className="display text-[32px] leading-none mb-2" style={{ color: 'var(--ink)' }}>
           SDMS Automator
         </h1>
-        <p
-          className="text-sm mb-8"
-          style={{ color: '#564338' }}
-        >
+        <p className="text-sm mb-8" style={{ color: 'var(--muted)' }}>
           Enter your PIN to continue
         </p>
 
@@ -98,7 +81,7 @@ export default function Login() {
           >
             <InputOTPGroup className="gap-3">
               {[0, 1, 2, 3].map((i) => (
-                <InputOTPSlot key={i} index={i} className="w-16 h-16 text-xl font-bold" />
+                <InputOTPSlot key={i} index={i} className="pin-slot w-16 h-16 text-xl font-bold" />
               ))}
             </InputOTPGroup>
           </InputOTP>
@@ -107,7 +90,7 @@ export default function Login() {
         {error && (
           <p
             className="mt-4 text-sm font-medium"
-            style={{ color: '#ba1a1a' }}
+            style={{ color: 'var(--fail)' }}
           >
             {error}
           </p>

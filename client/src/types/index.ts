@@ -1,54 +1,68 @@
-export type JobType = 'cash_memo' | 'dac';
-export type IdentifierType = 'consumer' | 'phone';
+export type JobType = 'return' | 'cancel';
 export type JobStatus = 'pending' | 'running' | 'completed' | 'failed';
 
 export interface Job {
   id: number;
   jobType: JobType;
   orderNumber: string;
-  identifierType: IdentifierType | null;
   details: string | null;
   status: JobStatus;
   attempts: number;
   maxRetries: number;
   resultMessage: string | null;
   errorMessage: string | null;
+  cancelRequested: boolean;
   hasScreenshot: boolean;
   createdAt: string;
   startedAt: string | null;
   completedAt: string | null;
 }
 
-export interface Stats {
+export interface OrderCounts {
   total: number;
-  completed: number;
+  done: number;
+  alreadyDone: number;
   failed: number;
-  pending: number;
-  running: number;
+  verified: number;
 }
 
-export interface JobsPage {
-  jobs: Job[];
-  nextCursor: number | null;
-  hasMore: boolean;
-  stats?: Stats;
+export interface CalendarJob {
+  id: number;
+  status: JobStatus;
+  fromDate: string;
+  toDate: string; // exclusive
+  filtered: boolean; // include-list or start-after, so it didn't cover every order in the range
+  cancelRequested: boolean;
+  errorMessage: string | null;
+  hasScreenshot: boolean;
+  counts: OrderCounts;
+  createdAt: string;
+  startedAt: string | null;
+  completedAt: string | null;
 }
 
-export interface StatsResponse {
-  stats: Stats;
+export interface JobOrder {
+  orderNumber: string;
+  status: 'done' | 'already_done' | 'failed';
+  verified: boolean;
 }
 
-export interface JobsQuery {
-  date?: string;
-  jobType?: JobType;
-  status?: JobStatus;
-  search?: string;
-  cursor?: number;
-  limit?: number;
+export interface JobDetail extends Job {
+  orders: JobOrder[];
+  counts: OrderCounts;
 }
 
-export interface CashMemoSettings {
+export interface PortalSettings {
   toolUrl: string;
-  toolUsername: string;
-  toolPassword: string;
+  accounts: PortalAccount[];
+}
+
+export interface PortalAccount {
+  username: string;
+  password: string;
+}
+
+export interface ReturnSettings {
+  deliveryBoy: string;
+  reason: string;
 }

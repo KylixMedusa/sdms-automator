@@ -7,8 +7,10 @@ import logger from '../../shared/utils/logger';
 
 const POLL_INTERVAL = parseInt(process.env.POLL_INTERVAL_MS || '3000', 10);
 
+const CONCURRENCY = Math.max(1, parseInt(process.env.WORKER_CONCURRENCY || '1', 10));
+
 let shuttingDown = false;
-let currentJobPromise: Promise<void> | null = null;
+const inFlight = new Set<Promise<void>>();
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -48,6 +50,8 @@ async function claimNextJob(): Promise<Job | null> {
     resultMessage: row.result_message as string | null,
     errorMessage: row.error_message as string | null,
     errorScreenshot: row.error_screenshot as string | null,
+    processedOrders: row.processed_orders as string | null,
+    cancelRequested: row.cancel_requested as boolean,
     createdAt: row.created_at as Date,
     startedAt: row.started_at as Date | null,
     completedAt: row.completed_at as Date | null,
@@ -77,6 +81,13 @@ async function markFailed(id: number, errorMessage: string, errorScreenshot?: st
     .where(eq(jobs.id, id));
 }
 
+async function markCancelled(id: number, message: string): Promise<void> {
+  await db
+    .update(jobs)
+    .set({ status: 'failed', errorMessage: message, completedAt: new Date() })
+    .where(eq(jobs.id, id));
+}
+
 // #7 fix: Use fresh `attempts` from the claimed job (already incremented by claimNextJob)
 async function handleFailure(job: Job, errorMessage: string, screenshot?: string): Promise<void> {
   if (job.attempts < job.maxRetries) {
@@ -97,7 +108,10 @@ async function processJob(job: Job): Promise<void> {
   try {
     const result = await runAutomation(job);
 
-    if (result.success) {
+    if (result.cancelled) {
+      await markCancelled(job.id, result.message);
+      logger.info(`Job #${job.id} cancelled: ${result.message}`);
+    } else if (result.success) {
       await markCompleted(job.id, result.message);
       logger.info(`Job #${job.id} completed: ${result.message}`);
     } else {
@@ -122,8 +136,14 @@ export async function startJobProcessor(): Promise<void> {
     throw err;
   }
 
-  logger.info('Job processor started — polling for pending jobs');
+  logger.info(`Job processor started — polling for pending jobs (concurrency ${CONCURRENCY})`);
 
+  await Promise.all(Array.from({ length: CONCURRENCY }, () => runLoop()));
+
+  logger.info('Job processor stopped');
+}
+
+async function runLoop(): Promise<void> {
   while (!shuttingDown) {
     try {
       const job = await claimNextJob();
@@ -133,24 +153,26 @@ export async function startJobProcessor(): Promise<void> {
         continue;
       }
 
-      currentJobPromise = processJob(job);
-      await currentJobPromise;
-      currentJobPromise = null;
+      const p = processJob(job);
+      inFlight.add(p);
+      try {
+        await p;
+      } finally {
+        inFlight.delete(p);
+      }
     } catch (err) {
       logger.error('Job processor error', err);
       await sleep(POLL_INTERVAL);
     }
   }
-
-  logger.info('Job processor stopped');
 }
 
 export async function gracefulShutdown(): Promise<void> {
   logger.info('Graceful shutdown initiated...');
   shuttingDown = true;
 
-  if (currentJobPromise) {
-    logger.info('Waiting for current job to finish...');
-    await currentJobPromise;
+  if (inFlight.size > 0) {
+    logger.info(`Waiting for ${inFlight.size} running job(s) to finish...`);
+    await Promise.all(inFlight);
   }
 }

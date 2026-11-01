@@ -21,11 +21,11 @@ export default function ProtectedRoute({ children }: { children: React.ReactNode
     return (
       <div
         className="min-h-screen flex items-center justify-center"
-        style={{ backgroundColor: '#fbf9f5' }}
+        style={{ backgroundColor: 'var(--paper)' }}
       >
         <div
           className="w-10 h-10 rounded-full animate-spin"
-          style={{ border: '3px solid #e4e2de', borderTopColor: '#974400' }}
+          style={{ border: '3px solid var(--line)', borderTopColor: 'var(--ink)' }}
         />
       </div>
     );

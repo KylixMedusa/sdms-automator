@@ -46,6 +46,13 @@ app.listen(PORT, () => {
   logger.info(`Environment: ${process.env.NODE_ENV || 'development'}`);
 });
 
+// A fresh TLS connection to Neon costs ~1–2s; keep one pooled connection warm so the first click after a lull is fast.
+const warmTimer = setInterval(() => {
+  pool.query('SELECT 1').catch(() => {});
+}, 20_000);
+warmTimer.unref();
+pool.query('SELECT 1').catch(() => {});
+
 const shutdown = async () => {
   logger.info('Shutdown signal received');
   await pool.end();

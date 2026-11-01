@@ -1,120 +1,165 @@
+import { NavLink } from 'react-router-dom';
 import { useMediaQuery } from '../hooks/useMediaQuery';
-import type { JobType } from '../types';
+import { NAV_WIDTH } from '../lib/layout';
+import { useTheme } from '../lib/theme';
 
 interface AppNavProps {
-  activeTab: JobType;
-  onTabChange: (tab: JobType) => void;
+  onOpenAccounts: () => void;
 }
 
-function CashMemoIcon({ active }: { active: boolean }) {
+function ReturnIcon() {
   return (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={active ? '#974400' : '#8a7266'} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-      <polyline points="14 2 14 8 20 8" />
-      <line x1="16" y1="13" x2="8" y2="13" />
-      <line x1="16" y1="17" x2="8" y2="17" />
-      <polyline points="10 9 9 9 8 9" />
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="9 10 4 15 9 20" />
+      <path d="M20 4v7a4 4 0 0 1-4 4H4" />
     </svg>
   );
 }
 
-function DacIcon({ active }: { active: boolean }) {
+function CancelIcon() {
   return (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={active ? '#974400' : '#8a7266'} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
-      <line x1="8" y1="21" x2="16" y2="21" />
-      <line x1="12" y1="17" x2="12" y2="21" />
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="10" />
+      <line x1="15" y1="9" x2="9" y2="15" />
+      <line x1="9" y1="9" x2="15" y2="15" />
+    </svg>
+  );
+}
+
+function AccountsIcon() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+      <circle cx="9" cy="7" r="4" />
+      <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+      <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+    </svg>
+  );
+}
+
+function ThemeIcon({ dark }: { dark: boolean }) {
+  return dark ? (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="4" />
+      <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
+    </svg>
+  ) : (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
     </svg>
   );
 }
 
 const tabs = [
-  { key: 'cash_memo' as JobType, label: 'Cash Memo', Icon: CashMemoIcon },
-  { key: 'dac' as JobType, label: 'DAC', Icon: DacIcon },
+  { path: '/return', label: 'Return', Icon: ReturnIcon },
+  { path: '/cancel', label: 'Cancel', Icon: CancelIcon },
 ];
 
-export default function AppNav({ activeTab, onTabChange }: AppNavProps) {
+export default function AppNav({ onOpenAccounts }: AppNavProps) {
   const isDesktop = useMediaQuery('(min-width: 640px)');
+  const { theme, toggle } = useTheme();
+  const dark = theme === 'dark';
+  const themeLabel = dark ? 'Light mode' : 'Dark mode';
 
   if (isDesktop) {
     return (
       <nav
-        className="fixed left-0 top-0 h-screen flex flex-col z-30"
-        style={{ width: 240, backgroundColor: '#f5f3ef' }}
+        className="fixed left-0 top-0 h-screen flex flex-col items-center z-30 py-4"
+        style={{ width: NAV_WIDTH, backgroundColor: 'var(--rail)' }}
+        aria-label="Main"
       >
-        <div className="px-5 pt-6 pb-8">
-          <h1
-            className="text-lg font-bold"
-            style={{
-              color: '#1b1c1a',
-              fontFamily: 'Plus Jakarta Sans, sans-serif',
-              letterSpacing: '-0.02em',
-            }}
-          >
-            SDMS Automator
-          </h1>
+        <img src="/indianoil-roundel.svg" alt="" title="SDMS Automator" className="w-10 h-10 mb-5" />
+        <div className="flex flex-col gap-1.5 flex-1 w-full px-2">
+          {tabs.map(({ path, label, Icon }) => (
+            <NavLink
+              key={path}
+              to={path}
+              title={label}
+              aria-label={label}
+              className="nav-item flex flex-col items-center justify-center gap-0.5 py-2 transition-colors"
+              style={({ isActive }) => ({
+                borderRadius: 8,
+                backgroundColor: isActive ? 'rgba(255, 255, 255, 0.12)' : 'transparent',
+                color: isActive ? '#FFFFFF' : 'rgba(255, 255, 255, 0.62)',
+                textDecoration: 'none',
+              })}
+            >
+              <Icon />
+              <span className="text-[11px] font-semibold leading-none">{label}</span>
+            </NavLink>
+          ))}
         </div>
-        <div className="flex flex-col gap-1 px-3">
-          {tabs.map(({ key, label, Icon }) => {
-            const active = activeTab === key;
-            return (
-              <button
-                key={key}
-                onClick={() => onTabChange(key)}
-                className="flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-semibold transition-all min-h-[44px]"
-                style={{
-                  backgroundColor: active ? 'rgba(151, 68, 0, 0.08)' : 'transparent',
-                  color: active ? '#974400' : '#8a7266',
-                  border: 'none',
-                  cursor: 'pointer',
-                  textAlign: 'left',
-                }}
-              >
-                <Icon active={active} />
-                {label}
-              </button>
-            );
-          })}
-        </div>
+        <button
+          onClick={toggle}
+          title={themeLabel}
+          aria-label={themeLabel}
+          className="nav-item w-[calc(100%-16px)] flex flex-col items-center justify-center gap-0.5 py-2 mb-1"
+          style={{ backgroundColor: 'transparent', color: 'rgba(255, 255, 255, 0.62)', border: 'none', borderRadius: 8, cursor: 'pointer' }}
+        >
+          <ThemeIcon dark={dark} />
+          <span className="text-[11px] font-semibold leading-none">{dark ? 'Light' : 'Dark'}</span>
+        </button>
+        <button
+          onClick={onOpenAccounts}
+          title="Accounts"
+          aria-label="Accounts"
+          className="nav-item w-[calc(100%-16px)] flex flex-col items-center justify-center gap-0.5 py-2 mb-1"
+          style={{ backgroundColor: 'transparent', color: 'rgba(255, 255, 255, 0.62)', border: 'none', borderRadius: 8, cursor: 'pointer' }}
+        >
+          <AccountsIcon />
+          <span className="text-[11px] font-semibold leading-none">Accounts</span>
+        </button>
       </nav>
     );
   }
 
-  // Mobile: fixed bottom tab bar
   return (
     <nav
       className="fixed bottom-0 left-0 right-0 z-30 flex"
       style={{
-        backgroundColor: '#fbf9f5',
-        boxShadow: '0 -4px 16px rgba(86, 67, 56, 0.06)',
+        backgroundColor: 'var(--tile)',
+        borderTop: '1px solid var(--line)',
         paddingBottom: 'env(safe-area-inset-bottom, 0px)',
       }}
     >
-      {tabs.map(({ key, label, Icon }) => {
-        const active = activeTab === key;
-        return (
-          <button
-            key={key}
-            onClick={() => onTabChange(key)}
-            className="flex-1 flex flex-col items-center justify-center gap-1 py-2 min-h-[56px] transition-all"
-            style={{
-              backgroundColor: 'transparent',
-              color: active ? '#974400' : '#8a7266',
-              border: 'none',
-              cursor: 'pointer',
-            }}
-          >
-            <Icon active={active} />
-            <span className="text-[11px] font-semibold">{label}</span>
-            {active && (
-              <div
-                className="w-5 h-0.5 rounded-full mt-0.5"
-                style={{ backgroundColor: '#974400' }}
-              />
-            )}
-          </button>
-        );
-      })}
+      {tabs.map(({ path, label, Icon }) => (
+        <NavLink
+          key={path}
+          to={path}
+          className="flex-1 flex flex-col items-center justify-center gap-1 py-2 min-h-[56px] transition-all"
+          style={({ isActive }) => ({
+            color: isActive ? 'var(--ink)' : 'var(--muted)',
+            textDecoration: 'none',
+          })}
+        >
+          {({ isActive }) => (
+            <>
+              <Icon />
+              <span className="text-[11px] font-bold">{label}</span>
+              {isActive && (
+                <div className="w-5 h-0.5 rounded-full mt-0.5" style={{ backgroundColor: 'var(--gold)' }} />
+              )}
+            </>
+          )}
+        </NavLink>
+      ))}
+      <button
+        onClick={onOpenAccounts}
+        className="flex-1 flex flex-col items-center justify-center gap-1 py-2 min-h-[56px] transition-all"
+        style={{ backgroundColor: 'transparent', color: 'var(--muted)', border: 'none', cursor: 'pointer' }}
+      >
+        <AccountsIcon />
+        <span className="text-[11px] font-bold">Accounts</span>
+      </button>
+      <button
+        onClick={toggle}
+        aria-label={themeLabel}
+        className="flex-1 flex flex-col items-center justify-center gap-1 py-2 min-h-[56px] transition-all"
+        style={{ backgroundColor: 'transparent', color: 'var(--muted)', border: 'none', cursor: 'pointer' }}
+      >
+        <ThemeIcon dark={dark} />
+        <span className="text-[11px] font-bold">{dark ? 'Light' : 'Dark'}</span>
+      </button>
     </nav>
   );
 }

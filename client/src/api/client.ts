@@ -1,4 +1,4 @@
-import type { JobsPage, StatsResponse, Job, JobType, IdentifierType, JobsQuery, CashMemoSettings } from '../types';
+import type { JobType, CalendarJob, JobDetail, PortalSettings, ReturnSettings } from '../types';
 
 const API_BASE = import.meta.env.VITE_API_URL
   ? `${import.meta.env.VITE_API_URL}/api`
@@ -65,45 +65,47 @@ export async function checkAuth(): Promise<boolean> {
   }
 }
 
-export async function getJobs(query: JobsQuery): Promise<JobsPage> {
-  const params = new URLSearchParams();
-  if (query.date) params.set('date', query.date);
-  if (query.jobType) params.set('jobType', query.jobType);
-  if (query.status) params.set('status', query.status);
-  if (query.search) params.set('search', query.search);
-  if (query.cursor) params.set('cursor', String(query.cursor));
-  if (query.limit) params.set('limit', String(query.limit));
-  return request<JobsPage>(`/jobs?${params.toString()}`);
+export async function getJob(id: number): Promise<JobDetail> {
+  return (await request<{ job: JobDetail }>(`/jobs/${id}`)).job;
 }
 
-export async function getStats(date: string, jobType?: JobType): Promise<StatsResponse> {
-  const params = new URLSearchParams({ date });
-  if (jobType) params.set('jobType', jobType);
-  return request<StatsResponse>(`/jobs/stats?${params.toString()}`);
-}
-
-export async function getJob(id: number): Promise<{ job: Job }> {
-  return request<{ job: Job }>(`/jobs/${id}`);
+export async function getCalendarJobs(jobType: JobType, from: string, to: string): Promise<CalendarJob[]> {
+  const params = new URLSearchParams({ jobType, from, to });
+  return (await request<{ jobs: CalendarJob[] }>(`/jobs/calendar?${params.toString()}`)).jobs;
 }
 
 export async function createJob(
   orderNumber: string,
   jobType: JobType,
-  identifierType?: IdentifierType,
   details?: string,
 ): Promise<{ id: number; orderNumber: string; status: string; jobType: string }> {
   return request('/jobs', {
     method: 'POST',
-    body: JSON.stringify({ orderNumber, jobType, identifierType, details }),
+    body: JSON.stringify({ orderNumber, jobType, details }),
   });
 }
 
-export async function getCashMemoSettings(): Promise<CashMemoSettings> {
-  return request<CashMemoSettings>('/settings/cash_memo');
+export async function cancelJob(id: number): Promise<void> {
+  await request(`/jobs/${id}/cancel`, { method: 'POST' });
 }
 
-export async function updateCashMemoSettings(settings: Partial<CashMemoSettings>): Promise<void> {
-  await request('/settings/cash_memo', {
+export async function getPortalSettings(): Promise<PortalSettings> {
+  return request<PortalSettings>('/settings/portal');
+}
+
+export async function updatePortalSettings(settings: Partial<PortalSettings>): Promise<void> {
+  await request('/settings/portal', {
+    method: 'PUT',
+    body: JSON.stringify(settings),
+  });
+}
+
+export async function getReturnSettings(): Promise<ReturnSettings> {
+  return request<ReturnSettings>('/settings/return');
+}
+
+export async function updateReturnSettings(settings: Partial<ReturnSettings>): Promise<void> {
+  await request('/settings/return', {
     method: 'PUT',
     body: JSON.stringify(settings),
   });
@@ -125,9 +127,4 @@ export async function getScreenshotBlob(jobId: number): Promise<Blob | null> {
 
 export function isAuthenticated(): boolean {
   return !!getToken();
-}
-
-export function logout(): void {
-  clearToken();
-  window.location.href = '/';
 }

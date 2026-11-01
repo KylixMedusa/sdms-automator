@@ -2,37 +2,107 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { db } from '../../shared/db';
 import { jobs } from '../../shared/db/schema';
-import { eq, and, desc, gte, lt, or, ilike, sql, count } from 'drizzle-orm';
+import { eq, and, or, sql } from 'drizzle-orm';
 import { requireAuth } from '../middleware/auth';
 import logger from '../../shared/utils/logger';
 
 const router = Router();
 
+// For return/cancel jobs, `details` carries JSON:
+// { toDate, startAfterOrderNumber?, includeOrderNumbers?, excludeOrderNumbers?, useDeliveryBoy?, toolUsername? }
+const orderNumberList = z.array(z.string().trim().min(1)).max(500).optional();
+const returnDetailsSchema = z.object({
+  toDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'To date must be a valid date (YYYY-MM-DD)'),
+  startAfterOrderNumber: z.string().min(1).optional(),
+  includeOrderNumbers: orderNumberList,
+  excludeOrderNumbers: orderNumberList,
+  useDeliveryBoy: z.boolean().optional(),
+  toolUsername: z.string().trim().min(1).optional(),
+});
+
+function parseReturnDetails(details: string | undefined): ReturnType<typeof returnDetailsSchema.safeParse> {
+  try {
+    return returnDetailsSchema.safeParse(JSON.parse(details || ''));
+  } catch {
+    return returnDetailsSchema.safeParse(undefined);
+  }
+}
+
 const createJobSchema = z
   .object({
     orderNumber: z.string().min(1, 'Order number is required'),
-    jobType: z.enum(['cash_memo', 'dac']).default('cash_memo'),
-    identifierType: z.enum(['consumer', 'phone']).optional(),
+    jobType: z.enum(['return', 'cancel']),
     details: z.string().optional(),
   })
   .refine(
-    (data) => data.jobType !== 'cash_memo' || data.identifierType !== undefined,
-    { message: 'Identifier type is required for cash memo jobs', path: ['identifierType'] },
+    (data) => /^\d{4}-\d{2}-\d{2}$/.test(data.orderNumber),
+    { message: 'From date must be a valid date (YYYY-MM-DD)', path: ['orderNumber'] },
+  )
+  .refine(
+    (data) => parseReturnDetails(data.details).success,
+    { message: 'To date must be a valid date (YYYY-MM-DD)', path: ['details'] },
+  )
+  .refine(
+    (data) => {
+      const parsed = parseReturnDetails(data.details);
+      return !parsed.success || parsed.data.toDate > data.orderNumber;
+    },
+    { message: 'To date must be after from date', path: ['details'] },
   );
 
-const jobsQuerySchema = z.object({
-  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-  jobType: z.enum(['cash_memo', 'dac']).optional(),
-  status: z.enum(['pending', 'running', 'completed', 'failed']).optional(),
-  search: z.string().optional(),
-  cursor: z.coerce.number().int().positive().optional(),
-  limit: z.coerce.number().int().min(1).max(100).default(20),
+type OrderStatus = 'done' | 'already_done' | 'failed';
+
+// A cancelled order drops out of the portal query, so an empty cancel-verify query
+// means every order in the job is cancelled — including ones whose attempt errored.
+function cancelVerifiedEmpty(jobType: string, resultMessage: string | null): boolean {
+  return jobType === 'cancel' && !!resultMessage?.includes('query is empty') && !resultMessage.includes('STILL LISTED');
+}
+
+// Collapses processed_orders' per-attempt history into one row per order: latest failure wins,
+// otherwise 'done' if this app set the reason at any point, else 'already_done'.
+function summarizeOrders(raw: string | null, cleared = false) {
+  let history: Array<{ orderNumber: string; outcome: string }> = [];
+  try {
+    history = raw ? JSON.parse(raw) : [];
+  } catch {
+    history = [];
+  }
+
+  const byOrder = new Map<string, { latest: string; setByUs: boolean }>();
+  for (const { orderNumber, outcome } of history) {
+    const entry = byOrder.get(orderNumber) ?? { latest: outcome, setByUs: false };
+    entry.latest = outcome;
+    if (outcome === 'set_reason' || outcome === 'reapplied') entry.setByUs = true;
+    byOrder.set(orderNumber, entry);
+  }
+
+  const orders = [...byOrder.entries()].map(([orderNumber, { latest, setByUs }]) => ({
+    orderNumber,
+    status: (latest === 'failed' ? (cleared ? 'done' : 'failed') : setByUs ? 'done' : 'already_done') as OrderStatus,
+    verified: cleared || latest === 'verified' || latest === 'reapplied',
+  }));
+  const counts = {
+    total: orders.length,
+    done: orders.filter((o) => o.status === 'done').length,
+    alreadyDone: orders.filter((o) => o.status === 'already_done').length,
+    failed: orders.filter((o) => o.status === 'failed').length,
+    verified: orders.filter((o) => o.verified).length,
+  };
+  return { orders, counts };
+}
+
+function addDays(dateStr: string, days: number): string {
+  const d = new Date(`${dateStr}T00:00:00`);
+  d.setDate(d.getDate() + days);
+  return d.toLocaleDateString('en-CA');
+}
+
+const calendarQuerySchema = z.object({
+  jobType: z.enum(['return', 'cancel']),
+  from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
 });
 
-const statsQuerySchema = z.object({
-  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-  jobType: z.enum(['cash_memo', 'dac']).optional(),
-});
 
 // Create a new job
 router.post('/api/jobs', requireAuth, async (req, res) => {
@@ -44,7 +114,7 @@ router.post('/api/jobs', requireAuth, async (req, res) => {
       return;
     }
 
-    const { orderNumber, jobType, identifierType, details } = parsed.data;
+    const { orderNumber, jobType, details } = parsed.data;
 
     // Check for duplicate pending/running jobs with same order number and job type
     const existing = await db
@@ -74,7 +144,6 @@ router.post('/api/jobs', requireAuth, async (req, res) => {
       .values({
         orderNumber,
         jobType,
-        identifierType: identifierType || null,
         details: details || null,
         maxRetries,
       })
@@ -93,164 +162,75 @@ router.post('/api/jobs', requireAuth, async (req, res) => {
   }
 });
 
-// Get jobs — paginated, server-side filtering + search
-router.get('/api/jobs', requireAuth, async (req, res) => {
+// Jobs whose order-date range [fromDate, toDate) overlaps [from, to) — feeds the calendar view
+router.get('/api/jobs/calendar', requireAuth, async (req, res) => {
   try {
-    const parsed = jobsQuerySchema.safeParse(req.query);
-
+    const parsed = calendarQuerySchema.safeParse(req.query);
     if (!parsed.success) {
       res.status(400).json({ error: parsed.error.issues[0].message });
       return;
     }
+    const { jobType, from, to } = parsed.data;
 
-    const { date, jobType, status, search, cursor, limit } = parsed.data;
+    // order_number holds the ISO from-date, so plain text comparison works; the 1-year lookback
+    // bounds the scan for ranges that started long before the window. Order counts are aggregated
+    // here so processed_orders (the bulk of each row) never leaves the database.
+    const result = await db.execute(sql`
+      SELECT j.id, j.order_number, j.details, j.status, j.cancel_requested, j.error_message,
+        j.error_screenshot IS NOT NULL AS has_screenshot, j.created_at, j.started_at, j.completed_at,
+        (j.job_type = 'cancel' AND j.result_message LIKE '%query is empty%' AND j.result_message NOT LIKE '%STILL LISTED%') AS cleared,
+        coalesce(c.total, 0) AS total, coalesce(c.done, 0) AS done, coalesce(c.already, 0) AS already,
+        coalesce(c.failed, 0) AS failed, coalesce(c.verified, 0) AS verified
+      FROM jobs j
+      LEFT JOIN LATERAL (
+        SELECT count(*) AS total,
+          count(*) FILTER (WHERE latest = 'failed') AS failed,
+          count(*) FILTER (WHERE latest <> 'failed' AND set_by_us) AS done,
+          count(*) FILTER (WHERE latest <> 'failed' AND NOT set_by_us) AS already,
+          count(*) FILTER (WHERE latest IN ('verified', 'reapplied')) AS verified
+        FROM (
+          SELECT (array_agg(e.value->>'outcome' ORDER BY e.ord DESC))[1] AS latest,
+            bool_or(e.value->>'outcome' IN ('set_reason', 'reapplied')) AS set_by_us
+          FROM jsonb_array_elements(coalesce(j.processed_orders, '[]')::jsonb) WITH ORDINALITY e(value, ord)
+          GROUP BY e.value->>'orderNumber'
+        ) per_order
+      ) c ON true
+      WHERE j.job_type = ${jobType} AND j.order_number < ${to} AND j.order_number >= ${addDays(from, -366)}
+      ORDER BY j.id
+    `);
 
-    // Build WHERE conditions
-    const conditions = [];
+    const items = (result.rows as Record<string, unknown>[]).flatMap((row) => {
+      const fromDate = row.order_number as string;
+      const parsedDetails = parseReturnDetails((row.details as string | null) ?? undefined);
+      const toDate = parsedDetails.success ? parsedDetails.data.toDate : addDays(fromDate, 1);
+      if (toDate <= from) return [];
+      const n = (key: string) => Number(row[key]);
+      const cleared = row.cleared === true;
+      return [{
+        id: row.id as number,
+        status: row.status,
+        fromDate,
+        toDate,
+        filtered: parsedDetails.success && !!(parsedDetails.data.includeOrderNumbers?.length || parsedDetails.data.startAfterOrderNumber),
+        cancelRequested: row.cancel_requested,
+        errorMessage: row.error_message,
+        hasScreenshot: row.has_screenshot,
+        createdAt: row.created_at,
+        startedAt: row.started_at,
+        completedAt: row.completed_at,
+        counts: {
+          total: n('total'),
+          done: cleared ? n('done') + n('failed') : n('done'),
+          alreadyDone: n('already'),
+          failed: cleared ? 0 : n('failed'),
+          verified: cleared ? n('total') : n('verified'),
+        },
+      }];
+    });
 
-    // Date filter — use local time (server and user share timezone)
-    if (!search) {
-      const dateStr = date || new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD in local tz
-      const startOfDay = new Date(`${dateStr}T00:00:00`); // local midnight
-      const endOfDay = new Date(`${dateStr}T23:59:59.999`); // local end of day
-      conditions.push(gte(jobs.createdAt, startOfDay));
-      conditions.push(lt(jobs.createdAt, endOfDay));
-    }
-
-    if (jobType) {
-      conditions.push(eq(jobs.jobType, jobType));
-    }
-
-    if (status) {
-      if (status === 'pending') {
-        // "queued" means pending + running
-        conditions.push(or(eq(jobs.status, 'pending'), eq(jobs.status, 'running')));
-      } else {
-        conditions.push(eq(jobs.status, status));
-      }
-    }
-
-    if (search) {
-      conditions.push(ilike(jobs.orderNumber, `%${search}%`));
-    }
-
-    // Cursor-based pagination: fetch items with id < cursor
-    if (cursor) {
-      conditions.push(lt(jobs.id, cursor));
-    }
-
-    const where = conditions.length > 0 ? and(...conditions) : undefined;
-
-    // Fetch limit + 1 to determine if there's a next page
-    // #8 fix: Use SQL expression for hasScreenshot instead of loading the full base64
-    const rows = await db
-      .select({
-        id: jobs.id,
-        jobType: jobs.jobType,
-        orderNumber: jobs.orderNumber,
-        identifierType: jobs.identifierType,
-        details: jobs.details,
-        status: jobs.status,
-        attempts: jobs.attempts,
-        maxRetries: jobs.maxRetries,
-        resultMessage: jobs.resultMessage,
-        errorMessage: jobs.errorMessage,
-        hasScreenshot: sql<boolean>`error_screenshot IS NOT NULL`.as('has_screenshot'),
-        createdAt: jobs.createdAt,
-        startedAt: jobs.startedAt,
-        completedAt: jobs.completedAt,
-      })
-      .from(jobs)
-      .where(where)
-      .orderBy(desc(jobs.id))
-      .limit(limit + 1);
-
-    const hasMore = rows.length > limit;
-    const items = hasMore ? rows.slice(0, limit) : rows;
-    const nextCursor = hasMore ? items[items.length - 1].id : null;
-
-    const response: Record<string, unknown> = { jobs: items, nextCursor, hasMore };
-
-    // Include stats on the first page of date-filtered requests (no cursor, no search)
-    if (!cursor && !search) {
-      const statsDateStr = date || new Date().toLocaleDateString('en-CA');
-      const statsStart = new Date(`${statsDateStr}T00:00:00`);
-      const statsEnd = new Date(`${statsDateStr}T23:59:59.999`);
-      const statsConditions = [gte(jobs.createdAt, statsStart), lt(jobs.createdAt, statsEnd)];
-      if (jobType) statsConditions.push(eq(jobs.jobType, jobType));
-
-      // #10 fix: Use SQL COUNT + GROUP BY instead of fetching all rows
-      const statusCounts = await db
-        .select({ status: jobs.status, count: count() })
-        .from(jobs)
-        .where(and(...statsConditions))
-        .groupBy(jobs.status);
-
-      const statsMap: Record<string, number> = {};
-      for (const row of statusCounts) {
-        statsMap[row.status] = Number(row.count);
-      }
-
-      response.stats = {
-        total: Object.values(statsMap).reduce((a, b) => a + b, 0),
-        completed: statsMap['completed'] || 0,
-        failed: statsMap['failed'] || 0,
-        pending: statsMap['pending'] || 0,
-        running: statsMap['running'] || 0,
-      };
-    }
-
-    res.json(response);
+    res.json({ jobs: items });
   } catch (err) {
-    logger.error('Failed to fetch jobs', err);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// Get stats for a date — lightweight, separate from pagination
-router.get('/api/jobs/stats', requireAuth, async (req, res) => {
-  try {
-    const parsed = statsQuerySchema.safeParse(req.query);
-
-    if (!parsed.success) {
-      res.status(400).json({ error: 'Invalid query' });
-      return;
-    }
-
-    const dateStr = parsed.data.date || new Date().toLocaleDateString('en-CA');
-    const jobType = parsed.data.jobType;
-    const startOfDay = new Date(`${dateStr}T00:00:00`);
-    const endOfDay = new Date(`${dateStr}T23:59:59.999`);
-
-    const conditions = [gte(jobs.createdAt, startOfDay), lt(jobs.createdAt, endOfDay)];
-    if (jobType) {
-      conditions.push(eq(jobs.jobType, jobType));
-    }
-
-    const where = and(...conditions);
-
-    const statusCounts = await db
-      .select({ status: jobs.status, count: count() })
-      .from(jobs)
-      .where(where)
-      .groupBy(jobs.status);
-
-    const statsMap: Record<string, number> = {};
-    for (const row of statusCounts) {
-      statsMap[row.status] = Number(row.count);
-    }
-
-    const stats = {
-      total: Object.values(statsMap).reduce((a, b) => a + b, 0),
-      completed: statsMap['completed'] || 0,
-      failed: statsMap['failed'] || 0,
-      pending: statsMap['pending'] || 0,
-      running: statsMap['running'] || 0,
-    };
-
-    res.json({ stats });
-  } catch (err) {
-    logger.error('Failed to fetch stats', err);
+    logger.error('Failed to fetch calendar jobs', err);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -266,16 +246,51 @@ router.get('/api/jobs/:id', requireAuth, async (req, res) => {
       return;
     }
 
-    const [job] = await db.select().from(jobs).where(eq(jobs.id, id)).limit(1);
+    const [row] = await db.select().from(jobs).where(eq(jobs.id, id)).limit(1);
 
-    if (!job) {
+    if (!row) {
       res.status(404).json({ error: 'Job not found' });
       return;
     }
 
-    res.json({ job });
+    const { errorScreenshot, processedOrders, ...job } = row;
+    const summary = summarizeOrders(processedOrders, cancelVerifiedEmpty(job.jobType, job.resultMessage));
+    res.json({ job: { ...job, hasScreenshot: !!errorScreenshot, ...summary } });
   } catch (err) {
     logger.error('Failed to fetch job', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Cancel a job — a pending job is killed immediately, a running job is
+// flagged and stops itself at its next check point (see return.ts).
+router.post('/api/jobs/:id/cancel', requireAuth, async (req, res) => {
+  try {
+    const idParam = req.params.id;
+    const id = parseInt(Array.isArray(idParam) ? idParam[0] : idParam, 10);
+    if (isNaN(id)) { res.status(400).json({ error: 'Invalid job ID' }); return; }
+
+    const [job] = await db.select().from(jobs).where(eq(jobs.id, id)).limit(1);
+    if (!job) { res.status(404).json({ error: 'Job not found' }); return; }
+
+    if (job.status === 'completed' || job.status === 'failed') {
+      res.status(409).json({ error: 'Job has already finished' });
+      return;
+    }
+
+    if (job.status === 'pending') {
+      await db
+        .update(jobs)
+        .set({ status: 'failed', errorMessage: 'Cancelled by user', completedAt: new Date() })
+        .where(eq(jobs.id, id));
+    } else {
+      await db.update(jobs).set({ cancelRequested: true }).where(eq(jobs.id, id));
+    }
+
+    logger.info(`Job #${id} cancel requested (was ${job.status})`);
+    res.json({ ok: true });
+  } catch (err) {
+    logger.error('Failed to cancel job', err);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
